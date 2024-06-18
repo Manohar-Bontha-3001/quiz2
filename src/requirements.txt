@@ -1,0 +1,8 @@
+Flask
+pandas
+SQLAlchemy
+redis
+geopy
+matplotlib
+basemap
+pyodbc
