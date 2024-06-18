@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h1 class="text-center my-4">Earthquake Data Results</h1>
+    {% if earthquakes %}
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Datetime</th>
+                <th>Latitude</th>
+                <th>Longitude</th>
+                <th>Magnitude</th>
+                <th>Place</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in earthquakes %}
+            <tr>
+                <td>{{ row.Datetime }}</td>
+                <td>{{ row.Latitude }}</td>
+                <td>{{ row.Longitude }}</td>
+                <td>{{ row.Magnitude }}</td>
+                <td>{{ row.Place }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No results found.</p>
+    {% endif %}
+</div>
+{% endblock %}
