@@ -1,24 +1,24 @@
 import os
-import pandas as pd
-from flask import Flask, request, render_template, redirect, url_for
-from sqlalchemy import create_engine, text
+from flask import Flask, request, render_template
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, DateTime, Float, text
 from geopy.distance import geodesic
-import matplotlib
-matplotlib.use('Agg')  # Force Agg backend
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
+from datetime import datetime
+# from pymemcache.client.base import Client
 import pyodbc
+import random
+import string
 
-# Get the absolute path to the src directory
-base_dir = os.path.abspath(os.path.dirname(__file__))
+# Set up Matplotlib
+import matplotlib
+matplotlib.use('Agg')
 
+# Define the Flask app
 app = Flask(__name__)
-app.secret_key = os.urandom(24)  # Generates a random secret key
+app.secret_key = os.urandom(24)
 
-# Replace {your_password_here} with your actual password
+# SQLAlchemy connection string
 connection_string = (
-    "mssql+pyodbc://manoharb:Arjunsuha1*@manoharb.database.windows.net:1433/manoharb"
-    "?driver=ODBC+Driver+17+for+SQL+Server"
+    "mssql+pyodbc://manoharb:Arjunsuha1*@manoharb.database.windows.net:1433/manoharb?driver=ODBC+Driver+17+for+SQL+Server"
 )
 
 # Create SQLAlchemy engine
@@ -50,22 +50,6 @@ def execute_query(query, params=None):
     cursor.close()
     connection.close()
     return rows
-
-def generate_map(earthquakes):
-    fig, ax = plt.subplots(subplot_kw={'projection': ccrs.PlateCarree()})
-    ax.stock_img()
-    ax.coastlines()
-    
-    for quake in earthquakes:
-        ax.plot(quake['Longitude'], quake['Latitude'], marker='o', color='red', markersize=5, transform=ccrs.Geodetic())
-
-    map_path = 'static/map.png'
-    plt.savefig(map_path)
-    
-    if not os.path.exists(map_path):
-        print("Map file was not created")
-    
-    return map_path
 
 def perform_query(form_data):
     min_mag = form_data.get('min_mag', 0)
@@ -101,6 +85,21 @@ def perform_query(form_data):
     results = cursor.fetchall()
     return results
 
+def measure_query_time(query_function, *args, **kwargs):
+    start_time = datetime.now()
+    results = query_function(*args, **kwargs)
+    end_time = datetime.now()
+    elapsed_time = end_time - start_time
+    return results, elapsed_time.total_seconds()
+
+# def query_with_caching(query_key, query_function, *args, **kwargs):
+#     cached_results = mc.get(query_key)
+#     if cached_results is None:
+#         results = query_function(*args, **kwargs)
+#         mc.set(query_key, results, time=3600)  # Cache for 1 hour
+#         return results, False  # False indicates the results were not cached
+#     else:
+#         return cached_results, True  # True indicates the results were retrieved from cache
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -109,6 +108,8 @@ def index():
 def query_data():
     if request.method == 'POST':
         try:
+            start_time = datetime.now()  # Start measuring time
+            
             min_mag = request.form.get('min_mag')
             max_mag = request.form.get('max_mag')
             start_date = request.form.get('start_date')
@@ -157,8 +158,9 @@ def query_data():
                     for quake in earthquakes
                     if geodesic((float(lat), float(lon)), (float(quake['Latitude']), float(quake['Longitude']))).km <= distance
                 ]
-                map_path = generate_map(nearby_earthquakes)
-                return render_template('results.html', earthquakes=nearby_earthquakes, map_path=map_path)
+                end_time = datetime.now()  # End measuring time
+                elapsed_time = (end_time - start_time).total_seconds()  # Calculate elapsed time
+                return render_template('results.html', earthquakes=nearby_earthquakes, map_path=None, query_time=elapsed_time)
 
             if place:
                 query += ' AND [place_name] LIKE ?'
@@ -171,14 +173,20 @@ def query_data():
             if night_time:
                 query += " AND [mag] > 4.0 AND (DATEPART(HOUR, [time]) >= 18 OR DATEPART(HOUR, [time]) <= 6)"
 
-            earthquakes = execute_query(query, tuple(params))
-            map_path = generate_map(earthquakes)
-            return render_template('results.html', earthquakes=earthquakes, map_path=map_path)
+            query_key = f"{min_mag}_{max_mag}_{start_date}_{end_date}_{lat}_{lon}_{place}_{distance}_{night_time}"
+            try:
+                earthquakes = execute_query(query, tuple(params))
+                end_time = datetime.now()  # End measuring time
+                elapsed_time = (end_time - start_time).total_seconds()  # Calculate elapsed time
+                return render_template('results.html', earthquakes=earthquakes, map_path=None, cached=False, query_time=elapsed_time)
+            except Exception as e:
+                return str(e), 400
 
         except Exception as e:
             return str(e), 400
 
     return render_template('query.html')
+
 
 @app.route('/count_large_earthquakes', methods=['GET'])
 def count_large_earthquakes():
@@ -235,6 +243,35 @@ def find_clusters():
                 unique_clusters.append(cluster)
 
         return render_template('clusters.html', clusters=unique_clusters)
+    except Exception as e:
+        return str(e), 400
+
+@app.route('/create_table')
+def create_table():
+    try:
+        # Generate a random table name
+        table_name = 'earthquake_' + ''.join(random.choices(string.ascii_letters + string.digits, k=2))
+
+        # Define your table schema
+        metadata = MetaData()
+        earthquakes = Table(
+            table_name, metadata,
+            Column('id', Integer, primary_key=True, autoincrement=True),
+            Column('time', DateTime),
+            Column('latitude', Float),
+            Column('longitude', Float),
+            Column('mag', Float),
+            Column('place', String),
+            Column('distance', Float),
+            Column('place_name', String),
+        )
+
+        # Measure time to create the table
+        start_time = datetime.now()
+        metadata.create_all(engine)
+        end_time = datetime.now()
+        elapsed_time = end_time - start_time
+        return f"Table '{table_name}' created successfully in {elapsed_time.total_seconds()} seconds."
     except Exception as e:
         return str(e), 400
 

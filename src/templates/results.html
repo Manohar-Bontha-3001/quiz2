@@ -4,7 +4,8 @@
 <div class="container">
     <h1 class="text-center my-4">Earthquake Data</h1>
     <div class="row">
-        <div class="col-md-6">
+        <div class="col-md-12">
+            <p class="text-center">Query Execution Time: {{ query_time }} seconds</p> <!-- Add this line to display time -->
             <table class="table table-striped">
                 <thead>
                     <tr>
@@ -27,9 +28,6 @@
                     {% endfor %}
                 </tbody>
             </table>
-        </div>
-        <div class="col-md-6">
-            <img src="{{ url_for('static', filename=map_path) }}" class="img-fluid" alt="Map">
         </div>
     </div>
 </div>
