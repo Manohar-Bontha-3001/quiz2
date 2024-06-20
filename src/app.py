@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from flask import Flask, request, render_src, redirect, url_for
+from flask import Flask, request, render_template, redirect, url_for
 from sqlalchemy import create_engine, text
 from geopy.distance import geodesic
 import matplotlib
@@ -128,7 +128,7 @@ def query_data():
                 ]
                 map_path = os.path.join(base_dir, 'map.png')
                 generate_map(nearby_earthquakes, map_path)
-                return render_src('results.html', earthquakes=nearby_earthquakes, map_path='map.png')
+                return render_template('results.html', earthquakes=nearby_earthquakes, map_path='map.png')
 
             if place:
                 query += ' AND [place_name] LIKE ?'
@@ -144,12 +144,12 @@ def query_data():
             earthquakes = execute_query(query, tuple(params))
             map_path = os.path.join(base_dir, 'map.png')
             generate_map(earthquakes, map_path)
-            return render_src('results.html', earthquakes=earthquakes, map_path='map.png')
+            return render_template('results.html', earthquakes=earthquakes, map_path='map.png')
 
         except Exception as e:
             return str(e), 400
 
-    return render_src('query.html')
+    return render_template('query.html')
 
 @app.route('/count_large_earthquakes', methods=['GET'])
 def count_large_earthquakes():
@@ -189,7 +189,7 @@ def find_clusters():
                 clusters.append(cluster)
         map_path = os.path.join(base_dir, 'map.png')
         generate_map([item for sublist in clusters for item in sublist], map_path)
-        return render_src('clusters.html', clusters=clusters, map_path='map.png')
+        return render_template('clusters.html', clusters=clusters, map_path='map.png')
     except Exception as e:
         return str(e), 400
 
