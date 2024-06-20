@@ -1,29 +1,24 @@
-{% extends "base.html" %}
-
-{% block content %}
-<div class="container">
-    <h1 class="text-center my-4">Clusters of Earthquakes</h1>
-    {% if clusters %}
-    {% for cluster in clusters %}
-    <div class="card my-2">
-        <div class="card-body">
-            <h5 class="card-title">Cluster</h5>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earthquake Clusters</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Earthquake Clusters</h1>
+        {% for cluster in clusters %}
+        <div class="cluster">
+            <h2>Cluster</h2>
             <ul>
                 {% for quake in cluster %}
-                <li>
-                    <strong>Datetime:</strong> {{ quake.Datetime }} <br>
-                    <strong>Latitude:</strong> {{ quake.Latitude }} <br>
-                    <strong>Longitude:</strong> {{ quake.Longitude }} <br>
-                    <strong>Magnitude:</strong> {{ quake.Magnitude }} <br>
-                    <strong>Place:</strong> {{ quake.Place }} <br>
-                </li>
+                <li>{{ quake['Datetime'] }}: {{ quake['Magnitude'] }} - {{ quake['Place'] }}</li>
                 {% endfor %}
             </ul>
         </div>
+        {% endfor %}
     </div>
-    {% endfor %}
-    {% else %}
-    <p>No clusters found.</p>
-    {% endif %}
-</div>
-{% endblock %}
+</body>
+</html>

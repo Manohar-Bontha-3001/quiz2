@@ -7,10 +7,7 @@ import matplotlib
 matplotlib.use('Agg')  # Force Agg backend
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-import pyodbc 
-from selenium import webdriver
-from jinja2 import Environment, FileSystemLoader
+import pyodbc
 
 # Get the absolute path to the src directory
 base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -35,7 +32,6 @@ def setup_matplotlib():
 
 setup_matplotlib()
 
-# Function to execute SQL queries
 def execute_query(query, params=None):
     connection = pyodbc.connect(
         'DRIVER={ODBC Driver 17 for SQL Server};'
@@ -49,30 +45,65 @@ def execute_query(query, params=None):
         cursor.execute(query, params)
     else:
         cursor.execute(query)
-    rows = cursor.fetchall()
+    columns = [column[0] for column in cursor.description]
+    rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
     cursor.close()
     connection.close()
     return rows
 
-def generate_map(earthquakes, map_path):
-    # Generate a map visualization for the provided earthquakes
-    plt.figure(figsize=(12, 8))
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.add_feature(cfeature.COASTLINE)
-    ax.add_feature(cfeature.BORDERS, linestyle=':')
-    ax.set_global()
+def generate_map(earthquakes):
+    fig, ax = plt.subplots(subplot_kw={'projection': ccrs.PlateCarree()})
+    ax.stock_img()
+    ax.coastlines()
+    
     for quake in earthquakes:
-        plt.plot(quake['Longitude'], quake['Latitude'], 'ro', markersize=5, transform=ccrs.PlateCarree())
-    plt.title('Earthquake Locations')
+        ax.plot(quake['Longitude'], quake['Latitude'], marker='o', color='red', markersize=5, transform=ccrs.Geodetic())
+
+    map_path = 'static/map.png'
     plt.savefig(map_path)
-    plt.close()
+    
+    if not os.path.exists(map_path):
+        print("Map file was not created")
+    
+    return map_path
+
+def perform_query(form_data):
+    min_mag = form_data.get('min_mag', 0)
+    max_mag = form_data.get('max_mag', 10)
+    start_date = form_data.get('start_date', '1970-01-01')
+    end_date = form_data.get('end_date', '2100-01-01')
+    latitude = form_data.get('latitude')
+    longitude = form_data.get('longitude')
+    place = form_data.get('place')
+    distance = form_data.get('distance')
+    night_time = form_data.get('night_time', False)
+    
+    query = """
+        SELECT *
+        FROM earthquakes
+        WHERE mag BETWEEN ? AND ?
+          AND [time] BETWEEN ? AND ?
+    """
+    params = [min_mag, max_mag, start_date, end_date]
+    
+    if latitude and longitude and distance:
+        query += " AND ST_Distance_Sphere(point(longitude, latitude), point(?, ?)) <= ?"
+        params.extend([longitude, latitude, distance])
+    
+    if place:
+        query += " AND place_name LIKE ?"
+        params.append(f"%{place}%")
+    
+    if night_time:
+        query += " AND (DATEPART(HOUR, [time]) >= 18 OR DATEPART(HOUR, [time]) <= 6)"
+    
+    cursor = engine.execute(query, params)
+    results = cursor.fetchall()
+    return results
 
 @app.route('/')
 def index():
-    template_dir = '/Users/bhavya/Downloads/qz/src'
-    env = Environment(loader=FileSystemLoader(template_dir))
-    template = env.get_template('index.html')
-    return template.render()
+    return render_template('index.html')
 
 @app.route('/query', methods=['GET', 'POST'])
 def query_data():
@@ -89,7 +120,7 @@ def query_data():
             night_time = request.form.get('night_time')
 
             query = '''
-                SELECT [time], [latitude], [longitude], [mag], [place], [distance], [place_name]
+                SELECT [time] AS Datetime, [latitude] AS Latitude, [longitude] AS Longitude, [mag] AS Magnitude, [place] AS Place, [distance] AS Distance, [place_name] AS Place_Name
                 FROM [dbo].[earthquakes]
                 WHERE 1=1
             '''
@@ -112,23 +143,22 @@ def query_data():
                 except ValueError:
                     return 'Error: Distance must be a number.', 400
 
-                earthquakes = execute_query(query, tuple(params))
+                earthquakes = perform_query(request.form)
                 nearby_earthquakes = [
                     {
-                        'Datetime': quake[0],
-                        'Latitude': float(quake[1]),
-                        'Longitude': float(quake[2]),
-                        'Magnitude': float(quake[3]),
-                        'Place': quake[4],
-                        'Distance': float(quake[5]),
-                        'Place_Name': quake[6]
+                        'Datetime': quake['Datetime'],
+                        'Latitude': float(quake['Latitude']),
+                        'Longitude': float(quake['Longitude']),
+                        'Magnitude': float(quake['Magnitude']),
+                        'Place': quake['Place'],
+                        'Distance': float(quake['Distance']),
+                        'Place_Name': quake['Place_Name']
                     }
                     for quake in earthquakes
-                    if geodesic((float(lat), float(lon)), (float(quake[1]), float(quake[2]))).km <= distance
+                    if geodesic((float(lat), float(lon)), (float(quake['Latitude']), float(quake['Longitude']))).km <= distance
                 ]
-                map_path = os.path.join(base_dir, 'map.png')
-                generate_map(nearby_earthquakes, map_path)
-                return render_template('results.html', earthquakes=nearby_earthquakes, map_path='map.png')
+                map_path = generate_map(nearby_earthquakes)
+                return render_template('results.html', earthquakes=nearby_earthquakes, map_path=map_path)
 
             if place:
                 query += ' AND [place_name] LIKE ?'
@@ -142,9 +172,8 @@ def query_data():
                 query += " AND [mag] > 4.0 AND (DATEPART(HOUR, [time]) >= 18 OR DATEPART(HOUR, [time]) <= 6)"
 
             earthquakes = execute_query(query, tuple(params))
-            map_path = os.path.join(base_dir, 'map.png')
-            generate_map(earthquakes, map_path)
-            return render_template('results.html', earthquakes=earthquakes, map_path='map.png')
+            map_path = generate_map(earthquakes)
+            return render_template('results.html', earthquakes=earthquakes, map_path=map_path)
 
         except Exception as e:
             return str(e), 400
@@ -154,8 +183,8 @@ def query_data():
 @app.route('/count_large_earthquakes', methods=['GET'])
 def count_large_earthquakes():
     try:
-        result = execute_query('SELECT COUNT(*) AS count FROM earthquakes WHERE Mag > 5.0')
-        count = result[0][0]  # Accessing the first column directly
+        result = execute_query('SELECT COUNT(*) AS count FROM earthquakes WHERE mag > 5.0')
+        count = result[0]['count']  # Accessing the first column directly
         return f'Total earthquakes with magnitude greater than 5.0: {count}'
     except Exception as e:
         return str(e), 400
@@ -166,10 +195,10 @@ def large_earthquakes_night():
         result = execute_query('''
             SELECT COUNT(*) AS count 
             FROM earthquakes 
-            WHERE Mag > 4.0 
-            AND (DATEPART(HOUR, datetime) >= 18 OR DATEPART(HOUR, datetime) <= 6)
+            WHERE mag > 4.0 
+            AND (DATEPART(HOUR, time) >= 18 OR DATEPART(HOUR, time) <= 6)
         ''')
-        count = result[0][0]  # Accessing the first column directly
+        count = result[0]['count']  # Accessing the first column directly
         return f'Total large earthquakes (>4.0 mag) at night: {count}'
     except Exception as e:
         return str(e), 400
@@ -178,18 +207,34 @@ def large_earthquakes_night():
 def find_clusters():
     try:
         query = '''
-            SELECT datetime AS Datetime, latitude AS Latitude, longitude AS Longitude, Mag AS Magnitude, place AS Place, distance AS Distance, place_name AS Place_Name
-            FROM earthquakes
+            SELECT [time] AS Datetime, [latitude] AS Latitude, [longitude] AS Longitude, [mag] AS Magnitude, [place] AS Place
+            FROM [dbo].[earthquakes]
         '''
         earthquakes = execute_query(query)
+        formatted_earthquakes = [
+            {
+                'Datetime': quake['Datetime'],
+                'Latitude': float(quake['Latitude']),
+                'Longitude': float(quake['Longitude']),
+                'Magnitude': float(quake['Magnitude']),
+                'Place': quake['Place']
+            }
+            for quake in earthquakes
+        ]
+
         clusters = []
-        for quake in earthquakes:
-            cluster = [q for q in earthquakes if geodesic((quake['Latitude'], quake['Longitude']), (q['Latitude'], q['Longitude'])).km <= 50]
+        for quake in formatted_earthquakes:
+            cluster = [q for q in formatted_earthquakes if geodesic((quake['Latitude'], quake['Longitude']), (q['Latitude'], q['Longitude'])).km <= 50]
             if len(cluster) > 1:
                 clusters.append(cluster)
-        map_path = os.path.join(base_dir, 'map.png')
-        generate_map([item for sublist in clusters for item in sublist], map_path)
-        return render_template('clusters.html', clusters=clusters, map_path='map.png')
+
+        # Remove duplicate clusters
+        unique_clusters = []
+        for cluster in clusters:
+            if cluster not in unique_clusters:
+                unique_clusters.append(cluster)
+
+        return render_template('clusters.html', clusters=unique_clusters)
     except Exception as e:
         return str(e), 400
 

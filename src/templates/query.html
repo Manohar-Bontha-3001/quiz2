@@ -6,27 +6,27 @@
     <form action="{{ url_for('query_data') }}" method="post">
         <div class="form-group">
             <label for="min_mag">Minimum Magnitude:</label>
-            <input type="text" class="form-control" id="min_mag" name="min_mag">
+            <input type="number" step="0.1" class="form-control" id="min_mag" name="min_mag">
         </div>
         <div class="form-group">
             <label for="max_mag">Maximum Magnitude:</label>
-            <input type="text" class="form-control" id="max_mag" name="max_mag">
+            <input type="number" step="0.1" class="form-control" id="max_mag" name="max_mag">
         </div>
         <div class="form-group">
             <label for="start_date">Start Date:</label>
-            <input type="text" class="form-control datepicker" id="start_date" name="start_date">
+            <input type="date" class="form-control datepicker" id="start_date" name="start_date">
         </div>
         <div class="form-group">
             <label for="end_date">End Date:</label>
-            <input type="text" class="form-control datepicker" id="end_date" name="end_date">
+            <input type="date" class="form-control datepicker" id="end_date" name="end_date">
         </div>
         <div class="form-group">
             <label for="latitude">Latitude:</label>
-            <input type="text" class="form-control" id="latitude" name="latitude">
+            <input type="number" step="0.0001" class="form-control" id="latitude" name="latitude">
         </div>
         <div class="form-group">
             <label for="longitude">Longitude:</label>
-            <input type="text" class="form-control" id="longitude" name="longitude">
+            <input type="number" step="0.0001" class="form-control" id="longitude" name="longitude">
         </div>
         <div class="form-group">
             <label for="place">Place Name:</label>
@@ -34,7 +34,7 @@
         </div>
         <div class="form-group">
             <label for="distance">Distance (km):</label>
-            <input type="text" class="form-control" id="distance" name="distance">
+            <input type="number" step="0.1" class="form-control" id="distance" name="distance">
         </div>
         <div class="form-group form-check">
             <input type="checkbox" class="form-check-input" id="night_time" name="night_time">

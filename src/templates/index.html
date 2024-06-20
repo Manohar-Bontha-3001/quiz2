@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-md-4">
+    <div class="col-md-4 mb-4">
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Query Earthquake Data</h5>
@@ -10,11 +10,19 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-4 mb-4">
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Count Large Earthquakes</h5>
                 <a href="{{ url_for('count_large_earthquakes') }}" class="btn btn-primary">Count Earthquakes</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Find Earthquake Clusters</h5>
+                <a href="{{ url_for('find_clusters') }}" class="btn btn-primary">Find Clusters</a>
             </div>
         </div>
     </div>
