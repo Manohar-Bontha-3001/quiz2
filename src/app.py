@@ -2,7 +2,8 @@ import os
 from flask import Flask, request, render_template
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, DateTime, Float, text
 from geopy.distance import geodesic
-from datetime import datetime
+from datetime import datetime, timedelta
+from statistics import mean
 # from pymemcache.client.base import Client
 import pyodbc
 import random
@@ -67,23 +68,19 @@ def perform_query(form_data):
         FROM earthquakes
         WHERE mag BETWEEN ? AND ?
           AND [time] BETWEEN ? AND ?
+          AND geography::Point(latitude, longitude, 4326).STDistance(geography::Point(?, ?, 4326)) <= ?
+          AND place_name LIKE ?
+          AND (DATEPART(HOUR, [time]) >= 18 OR DATEPART(HOUR, [time]) <= 6)
     """
-    params = [min_mag, max_mag, start_date, end_date]
+    params = (min_mag, max_mag, start_date, end_date, latitude, longitude, distance, f"%{place}%")
+
+    # Execute the query using the SQLAlchemy engine
+    with engine.connect() as connection:
+        result = connection.execute(text(query), params)
+        results = result.fetchall()
     
-    if latitude and longitude and distance:
-        query += " AND ST_Distance_Sphere(point(longitude, latitude), point(?, ?)) <= ?"
-        params.extend([longitude, latitude, distance])
-    
-    if place:
-        query += " AND place_name LIKE ?"
-        params.append(f"%{place}%")
-    
-    if night_time:
-        query += " AND (DATEPART(HOUR, [time]) >= 18 OR DATEPART(HOUR, [time]) <= 6)"
-    
-    cursor = engine.execute(query, params)
-    results = cursor.fetchall()
     return results
+
 
 def measure_query_time(query_function, *args, **kwargs):
     start_time = datetime.now()
@@ -100,6 +97,62 @@ def measure_query_time(query_function, *args, **kwargs):
 #         return results, False  # False indicates the results were not cached
 #     else:
 #         return cached_results, True  # True indicates the results were retrieved from cache
+from statistics import mean
+
+@app.route('/random_queries', methods=['GET'])
+def random_queries():
+    try:
+        # Define the maximum number of random queries
+        max_queries = 1000
+
+        # Initialize an empty list to store query results
+        query_results = []
+
+        # Generate and execute random queries
+        for _ in range(max_queries):
+            # Generate random query parameters
+            min_mag = random.uniform(0, 10)
+            max_mag = random.uniform(min_mag, 10)
+            start_date = datetime.now() - timedelta(days=random.randint(1, 365))
+            end_date = start_date + timedelta(days=random.randint(1, 365))
+            latitude = random.uniform(-90, 90)
+            longitude = random.uniform(-180, 180)
+            place = ''.join(random.choices(string.ascii_letters, k=random.randint(5, 15)))
+            distance = random.uniform(0, 1000)
+            night_time = random.choice([True, False])
+
+            # Execute the query and measure query time
+            results, elapsed_time = measure_query_time(perform_query, {
+                'min_mag': min_mag,
+                'max_mag': max_mag,
+                'start_date': start_date,
+                'end_date': end_date,
+                'latitude': latitude,
+                'longitude': longitude,
+                'place': place,
+                'distance': distance,
+                'night_time': night_time
+            })
+
+            # Append query results to the list
+            query_results.append({'query_parameters': {
+                'min_mag': min_mag,
+                'max_mag': max_mag,
+                'start_date': start_date,
+                'end_date': end_date,
+                'latitude': latitude,
+                'longitude': longitude,
+                'place': place,
+                'distance': distance,
+                'night_time': night_time
+            }, 'results': results, 'query_time': elapsed_time})
+
+        # Render the query_results.html template with the query results data
+        return render_template('query_results.html', query_results=query_results)
+    except Exception as e:
+        return str(e), 400
+
+
 @app.route('/')
 def index():
     return render_template('index.html')

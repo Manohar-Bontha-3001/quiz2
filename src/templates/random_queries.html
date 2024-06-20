@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h1 class="text-center my-4">Random Queries Results</h1>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th scope="col">Query Parameters</th>
+                <th scope="col">Results</th>
+                <th scope="col">Query Time (seconds)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for query_result in query_results %}
+            <tr>
+                <td>
+                    <ul>
+                        <li>Minimum Magnitude: {{ query_result['query_parameters']['min_mag'] }}</li>
+                        <li>Maximum Magnitude: {{ query_result['query_parameters']['max_mag'] }}</li>
+                        <li>Start Date: {{ query_result['query_parameters']['start_date'] }}</li>
+                        <li>End Date: {{ query_result['query_parameters']['end_date'] }}</li>
+                        <li>Latitude: {{ query_result['query_parameters']['latitude'] }}</li>
+                        <li>Longitude: {{ query_result['query_parameters']['longitude'] }}</li>
+                        <li>Place: {{ query_result['query_parameters']['place'] }}</li>
+                        <li>Distance: {{ query_result['query_parameters']['distance'] }}</li>
+                        <li>Night Time: {{ query_result['query_parameters']['night_time'] }}</li>
+                    </ul>
+                </td>
+                <td>
+                    <ul>
+                        {% for result in query_result['results'] %}
+                        <li>{{ result }}</li>
+                        {% endfor %}
+                    </ul>
+                </td>
+                <td>{{ query_result['query_time'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
