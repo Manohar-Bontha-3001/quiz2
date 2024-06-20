@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from flask import Flask, request, render_template, redirect, url_for
+from flask import Flask, request, render_src, redirect, url_for
 from sqlalchemy import create_engine, text
 from geopy.distance import geodesic
 import matplotlib
@@ -8,14 +8,17 @@ matplotlib.use('Agg')  # Force Agg backend
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import pyodbc 
+from selenium import webdriver
+from jinja2 import Environment, FileSystemLoader
 
 # Get the absolute path to the src directory
 base_dir = os.path.abspath(os.path.dirname(__file__))
 
-app = Flask(__name__, template_folder=base_dir, static_folder=base_dir)
+app = Flask(__name__)
 app.secret_key = os.urandom(24)  # Generates a random secret key
 
-# Connection string
+# Replace {your_password_here} with your actual password
 connection_string = (
     "mssql+pyodbc://manoharb:Arjunsuha1*@manoharb.database.windows.net:1433/manoharb"
     "?driver=ODBC+Driver+17+for+SQL+Server"
@@ -32,10 +35,24 @@ def setup_matplotlib():
 
 setup_matplotlib()
 
+# Function to execute SQL queries
 def execute_query(query, params=None):
-    with engine.connect() as connection:
-        result = connection.execute(text(query), params)
-        return result.fetchall()
+    connection = pyodbc.connect(
+        'DRIVER={ODBC Driver 17 for SQL Server};'
+        'SERVER=manoharb.database.windows.net;'
+        'DATABASE=manoharb;'
+        'UID=manoharb;'
+        'PWD=Arjunsuha1*'
+    )
+    cursor = connection.cursor()
+    if params:
+        cursor.execute(query, params)
+    else:
+        cursor.execute(query)
+    rows = cursor.fetchall()
+    cursor.close()
+    connection.close()
+    return rows
 
 def generate_map(earthquakes, map_path):
     # Generate a map visualization for the provided earthquakes
@@ -52,47 +69,10 @@ def generate_map(earthquakes, map_path):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    file = request.files['file']
-    if file:
-        try:
-            data = pd.read_csv(file)
-            # Separate 'place' column into 'distance' and 'place_name'
-            data['distance'] = data['place'].apply(lambda x: float(x.split(' km')[0]) if ' km' in x else None)
-            data['place_name'] = data['place'].apply(lambda x: x.split(' of ')[-1] if ' of ' in x else x)
-
-            with engine.connect() as connection:
-                for index, row in data.iterrows():
-                    connection.execute(text('''
-                        INSERT INTO earthquakes (
-                            datetime, latitude, longitude, Magnitude, magType, nst, gap, dmin, rms, net, id_earthquake, updated, place, type, local_time, distance, place_name
-                        ) VALUES (:time, :latitude, :longitude, :Magnitude, :magType, :nst, :gap, :dmin, :rms, :net, :id_earthquake, :updated, :place, :type, :local_time, :distance, :place_name)
-                    '''), {
-                        'time': row['time'],
-                        'latitude': row['latitude'],
-                        'longitude': row['longitude'],
-                        'Magnitude': row['mag'],
-                        'magType': row['magType'],
-                        'nst': row['nst'],
-                        'gap': row['gap'],
-                        'dmin': row['dmin'],
-                        'rms': row['rms'],
-                        'net': row['net'],
-                        'id_earthquake': row['id'],
-                        'updated': row['updated'],
-                        'place': row['place'],
-                        'type': row['type'],
-                        'local_time': row['local_time'],
-                        'distance': row['distance'],
-                        'place_name': row['place_name']
-                    })
-            return redirect(url_for('index'))
-        except Exception as e:
-            return str(e), 400
-    return 'No file uploaded', 400
+    template_dir = '/Users/bhavya/Downloads/qz/src'
+    env = Environment(loader=FileSystemLoader(template_dir))
+    template = env.get_template('index.html')
+    return template.render()
 
 @app.route('/query', methods=['GET', 'POST'])
 def query_data():
@@ -109,33 +89,30 @@ def query_data():
             night_time = request.form.get('night_time')
 
             query = '''
-                SELECT time AS Datetime, latitude AS Latitude, longitude AS Longitude, mag AS Magnitude, place AS Place, distance AS Distance, place_name AS Place_Name
-                FROM earthquakes
+                SELECT [time], [latitude], [longitude], [mag], [place], [distance], [place_name]
+                FROM [dbo].[earthquakes]
                 WHERE 1=1
             '''
-            params = {}
+            params = []
 
             if min_mag and max_mag:
-                query += ' AND mag BETWEEN :min_mag AND :max_mag'
-                params['min_mag'] = float(min_mag)
-                params['max_mag'] = float(max_mag)
+                query += ' AND [mag] BETWEEN ? AND ?'
+                params.extend([float(min_mag), float(max_mag)])
 
             if start_date and end_date:
                 if start_date <= end_date:
-                    query += ' AND time BETWEEN :start_date AND :end_date'
-                    params['start_date'] = start_date
-                    params['end_date'] = end_date
+                    query += ' AND [time] BETWEEN ? AND ?'
+                    params.extend([start_date, end_date])
                 else:
                     return 'Error: Start date must be before end date.', 400
 
             if lat and lon and distance:
-                # Check if the distance is valid
                 try:
                     distance = float(distance)
                 except ValueError:
                     return 'Error: Distance must be a number.', 400
 
-                earthquakes = execute_query(query, params)
+                earthquakes = execute_query(query, tuple(params))
                 nearby_earthquakes = [
                     {
                         'Datetime': quake[0],
@@ -149,31 +126,30 @@ def query_data():
                     for quake in earthquakes
                     if geodesic((float(lat), float(lon)), (float(quake[1]), float(quake[2]))).km <= distance
                 ]
-                map_path = os.path.join(base_dir, 'static', 'map.png')
+                map_path = os.path.join(base_dir, 'map.png')
                 generate_map(nearby_earthquakes, map_path)
-                return render_template('results.html', earthquakes=nearby_earthquakes, map_path='static/map.png')
+                return render_src('results.html', earthquakes=nearby_earthquakes, map_path='map.png')
 
             if place:
-                query += ' AND place_name LIKE :place'
-                params['place'] = f'%{place}%'
+                query += ' AND [place_name] LIKE ?'
+                params.append(f'%{place}%')
 
             if distance:
-                query += ' AND distance <= :distance'
-                params['distance'] = float(distance)
+                query += ' AND [distance] <= ?'
+                params.append(float(distance))
 
             if night_time:
-                query += " AND mag > 4.0 AND (DATEPART(HOUR, time) >= 18 OR DATEPART(HOUR, time) <= 6)"
+                query += " AND [mag] > 4.0 AND (DATEPART(HOUR, [time]) >= 18 OR DATEPART(HOUR, [time]) <= 6)"
 
-            earthquakes = execute_query(query, params)
-            map_path = os.path.join(base_dir, 'static', 'map.png')
+            earthquakes = execute_query(query, tuple(params))
+            map_path = os.path.join(base_dir, 'map.png')
             generate_map(earthquakes, map_path)
-            return render_template('results.html', earthquakes=earthquakes, map_path='static/map.png')
+            return render_src('results.html', earthquakes=earthquakes, map_path='map.png')
 
         except Exception as e:
             return str(e), 400
 
-    return render_template('query.html')
-
+    return render_src('query.html')
 
 @app.route('/count_large_earthquakes', methods=['GET'])
 def count_large_earthquakes():
@@ -211,14 +187,11 @@ def find_clusters():
             cluster = [q for q in earthquakes if geodesic((quake['Latitude'], quake['Longitude']), (q['Latitude'], q['Longitude'])).km <= 50]
             if len(cluster) > 1:
                 clusters.append(cluster)
-        map_path = os.path.join(base_dir, 'static', 'map.png')
+        map_path = os.path.join(base_dir, 'map.png')
         generate_map([item for sublist in clusters for item in sublist], map_path)
-        return render_template('clusters.html', clusters=clusters, map_path='static/map.png')
+        return render_src('clusters.html', clusters=clusters, map_path='map.png')
     except Exception as e:
         return str(e), 400
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-

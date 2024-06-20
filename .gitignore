@@ -1,3 +1,10 @@
+
+
+# Exclude virtual environment
+myenv/
+
+# Exclude other unnecessary files or directories
+*.log
 node_modules/
 /test-results/
 
